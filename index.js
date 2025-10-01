@@ -292,7 +292,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         
         // Send password reset email using Supabase Auth
         const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${process.env.FRONTEND_URL || 'https://prompt-perfect-backend.vercel.app'}/reset-password`
+            redirectTo: 'https://prompt-perfect-backend.vercel.app/reset-password'
         });
         
         if (error) {
