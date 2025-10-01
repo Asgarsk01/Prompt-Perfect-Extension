@@ -273,6 +273,212 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // =============================================================================
+// PASSWORD RESET & OTP VERIFICATION ENDPOINTS
+// =============================================================================
+
+// POST endpoint for password reset request
+app.post('/api/auth/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        // Validate that email is provided
+        if (!email) {
+            return res.status(400).json({
+                error: 'Email is required in the request body'
+            });
+        }
+        
+        console.log(`🔐 Password reset requested for: ${email}`);
+        
+        // Send password reset email using Supabase Auth
+        const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${process.env.FRONTEND_URL || 'https://prompt-perfect-backend.vercel.app'}/reset-password`
+        });
+        
+        if (error) {
+            console.error('❌ Password reset error:', error.message);
+            return res.status(400).json({
+                error: 'Failed to send password reset email',
+                details: error.message
+            });
+        }
+        
+        console.log(`✅ Password reset email sent to: ${email}`);
+        
+        // Return success response
+        res.status(200).json({
+            success: true,
+            message: 'Password reset email sent successfully. Please check your email inbox.'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error in /api/auth/forgot-password endpoint:', error);
+        res.status(500).json({
+            error: 'Internal server error during password reset request'
+        });
+    }
+});
+
+// POST endpoint for OTP verification
+app.post('/api/auth/verify-otp', async (req, res) => {
+    try {
+        const { email, token, type } = req.body;
+        
+        // Validate required fields
+        if (!email) {
+            return res.status(400).json({
+                error: 'Email is required in the request body'
+            });
+        }
+        
+        if (!token) {
+            return res.status(400).json({
+                error: 'OTP token is required in the request body'
+            });
+        }
+        
+        if (!type) {
+            return res.status(400).json({
+                error: 'OTP type is required in the request body'
+            });
+        }
+        
+        console.log(`🔐 OTP verification requested for: ${email}, type: ${type}`);
+        
+        // Verify OTP using Supabase Auth
+        const { data, error } = await supabase.auth.verifyOtp({
+            email: email,
+            token: token,
+            type: type
+        });
+        
+        if (error) {
+            console.error('❌ OTP verification error:', error.message);
+            return res.status(400).json({
+                error: 'Invalid or expired OTP',
+                details: error.message
+            });
+        }
+        
+        if (!data.session) {
+            console.error('❌ OTP verification failed: No session created');
+            return res.status(400).json({
+                error: 'OTP verification failed'
+            });
+        }
+        
+        console.log(`✅ OTP verified successfully for: ${email}`);
+        
+        // Check if user exists in public.users table, create if not
+        try {
+            const { data: existingUser, error: fetchError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', data.user.id)
+                .maybeSingle();
+            
+            if (!existingUser && !fetchError) {
+                // User doesn't exist in public.users, create them
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert([
+                        {
+                            id: data.user.id,
+                            email: email,
+                            name: data.user.user_metadata?.name || email.split('@')[0],
+                            credits_remaining: 8,
+                            has_unlimited_access: false,
+                            last_credit_reset: new Date().toISOString()
+                        }
+                    ]);
+                
+                if (!insertError) {
+                    console.log(`✅ Created user record in public.users table for: ${email}`);
+                }
+            }
+        } catch (err) {
+            console.error('⚠️ Error checking/creating user in public.users:', err.message);
+        }
+        
+        // Return success response with session information
+        res.status(200).json({
+            success: true,
+            message: 'OTP verified successfully',
+            session: {
+                access_token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+                expires_at: data.session.expires_at,
+                expires_in: data.session.expires_in
+            },
+            user: {
+                id: data.user.id,
+                email: data.user.email,
+                name: data.user.user_metadata?.name || null,
+                created_at: data.user.created_at
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Error in /api/auth/verify-otp endpoint:', error);
+        res.status(500).json({
+            error: 'Internal server error during OTP verification'
+        });
+    }
+});
+
+// POST endpoint for sending OTP
+app.post('/api/auth/send-otp', async (req, res) => {
+    try {
+        const { email, type } = req.body;
+        
+        // Validate required fields
+        if (!email) {
+            return res.status(400).json({
+                error: 'Email is required in the request body'
+            });
+        }
+        
+        if (!type) {
+            return res.status(400).json({
+                error: 'OTP type is required in the request body'
+            });
+        }
+        
+        console.log(`📧 Sending OTP to: ${email}, type: ${type}`);
+        
+        // Send OTP using Supabase Auth
+        const { data, error } = await supabase.auth.signInWithOtp({
+            email: email,
+            options: {
+                shouldCreateUser: type === 'signup' ? true : false
+            }
+        });
+        
+        if (error) {
+            console.error('❌ OTP send error:', error.message);
+            return res.status(400).json({
+                error: 'Failed to send OTP',
+                details: error.message
+            });
+        }
+        
+        console.log(`✅ OTP sent successfully to: ${email}`);
+        
+        // Return success response
+        res.status(200).json({
+            success: true,
+            message: 'OTP sent successfully. Please check your email inbox.'
+        });
+        
+    } catch (error) {
+        console.error('❌ Error in /api/auth/send-otp endpoint:', error);
+        res.status(500).json({
+            error: 'Internal server error during OTP sending'
+        });
+    }
+});
+
+// =============================================================================
 // COUPON REDEMPTION ENDPOINT
 // =============================================================================
 
@@ -767,6 +973,9 @@ app.listen(PORT, () => {
     console.log(`🔐 Auth endpoints available at:`);
     console.log(`   - Registration: http://localhost:${PORT}/api/auth/register`);
     console.log(`   - Login: http://localhost:${PORT}/api/auth/login`);
+    console.log(`   - Forgot Password: http://localhost:${PORT}/api/auth/forgot-password`);
+    console.log(`   - Send OTP: http://localhost:${PORT}/api/auth/send-otp`);
+    console.log(`   - Verify OTP: http://localhost:${PORT}/api/auth/verify-otp`);
     console.log(`🎫 Coupon endpoint available at:`);
     console.log(`   - Redeem Coupon: http://localhost:${PORT}/api/user/redeem-coupon`);
     console.log(`🔧 API endpoint available at: http://localhost:${PORT}/api/enhance`);

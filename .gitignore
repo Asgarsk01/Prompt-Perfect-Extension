@@ -102,3 +102,5 @@ prompt-perfect-extensionn/
 # Documentation files
 *.md
 !README.md
+
+.env*.local
