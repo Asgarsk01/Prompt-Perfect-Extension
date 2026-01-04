@@ -15,6 +15,11 @@ if (!supabaseServiceKey) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is required but not found in environment variables');
 }
 
+// Debug: Verify key is loaded (show first 20 chars only for security)
+if (supabaseServiceKey && supabaseServiceKey.length > 0) {
+} else {
+}
+
 // Create and configure the Supabase client with service role key
 // Service role key bypasses RLS and has full database access - use carefully!
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
